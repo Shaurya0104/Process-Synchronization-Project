@@ -1,9 +1,3 @@
-// Problem statement:
-// Hydrogen and oxygen atoms keep arriving randomly to form water molecules.
-// Whenever there are two free hydrogen atoms and one free oxygen atom,
-// We pair them up to form a water molecule.
-// Write an executable c-code to simulate this situation.
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
