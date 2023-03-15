@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include<unistd.h>
 
 #define MAX_CARS 10 // maximum number of cars on the bridge at once
 #define MAX_WEIGHT 1000 // maximum weight capacity of the bridge
