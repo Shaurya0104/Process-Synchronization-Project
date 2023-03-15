@@ -1,6 +1,5 @@
 #include <pthread.h>
 #include <iostream>
-#include <chrono>
 #include<unistd.h>
 
 using namespace std;
