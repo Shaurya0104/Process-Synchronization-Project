@@ -1,120 +1,162 @@
-#include <unistd.h>          //Provides API for POSIX(or UNIX) OS for system calls
-#include <stdio.h>
-#include <stdlib.h>          //For exit() and rand()
-#include <pthread.h>         //For using pThread library
+#include <pthread.h>
 #include "my_semaphores.h"
-//For using semaphore APIs
+#include <stdio.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <unistd.h>
+#include<string>
+#include<iostream>
 
-//Global variables required
-#define NUMBER_BARBER 3        //number of barbers
-#define MAXIMUM_CUSTOMER 20          //maximum number of customers in a Day
-#define MAXIMUM_CHAIRS 10      //number of chairs for waiting in shop
-#define CUT_TIME 1           //time required by barber to finish haircutting of one customer
+using namespace std;
 
-//Semaphore
-sem_t barbers;
-sem_t clients;
-sem_t mutex;
+sem_t Agent;
+sem_t Smoker[3];
+sem_t Agready;
+sem_t Smready;
 
-//Functions
-void thread_Barber(void *ptr);
-void thread_Client(void *ptr);
-void wait();
+int G = -1, s = 1;
+int wait_count[3];
 
-//Variables
-int availableSeats = MAXIMUM_CHAIRS;    //Counter for Vacant seats in waiting room
-int queChair[MAXIMUM_CHAIRS];             //To exchange pid between customer and barber
-int nextClient = 0;                        //Index of next candidate for cutting hair
-int sitHereNext = 0;
-static int cnt = 0;
+string Draw[] = { "paper & matches", "paper & tobacco", "tobacco & matches" };
+//char Draw[3][17] = { " paper & matches ", " paper & tobacco ", "tobacco & matches" };
 
-int main()
+bool Done = false;
+
+void *smoker(void *num)
 {
-    pthread_t barber[NUMBER_BARBER],client[MAXIMUM_CUSTOMER];   // declarations of required threads
-    int ret_val=0;
+    int *S_num = (int *) (num) ;
 
-    sem_init(&barbers,0,0);
-    sem_init(&clients,0,0);
-    sem_init(&mutex,0,1);
-
-    printf("Barber Shop Opens\n");
-    for(int x=0;x<NUMBER_BARBER;x++)
+    for (int i = 0; i < 21; i++)
     {
-        ret_val= pthread_create(&barber[x],NULL,(void *)thread_Barber,(void *)&x);
-        sleep(1);
-        if(ret_val!=0)
-            perror("No Barber Available at this instant..........\n");
+        usleep( rand() % 50000);
+        cout<<"Smoker "<<*S_num<<" waiting for "<<Draw[*S_num-1]<<" \n";
+        s++;
+
+        if(s>3) sem_post(&Smready);
+
+        sem_wait(&Smoker[*S_num-1]) ;
+
+        if(G==0)
+        {
+            usleep( rand() % 50000);
+            cout<<"Smoker 1 is making cigarette\n";
+            sleep(1);
+            cout<<"Smoking....\n";
+
+            wait_count[0]--;
+            sem_post(&Agent);
+        }
+
+        else if(G==1)
+        {
+            usleep( rand() % 50000);
+            cout<<"Smoker 2 is making cigarette\n";
+            sleep(1);
+            cout<<"Smoking....\n";
+
+            wait_count[1]--;
+            sem_post(&Agent);
+        }
+
+        else if(G==2)
+        {
+            usleep( rand() % 50000);
+            cout<<"Smoker 3 is making cigarette\n";
+            sleep(1);
+            cout<<"Smoking....\n";
+
+            wait_count[2]--;
+            sem_post(&Agent);
+        }
+
     }
 
-    for(int x=0;x<MAXIMUM_CUSTOMER;x++)
-    {
-        ret_val= pthread_create(&client[x],NULL,(void )thread_Client,(void)&x);
-        wait();
-        if(ret_val!=0)
-            perror("No clients Yet...\n");
-    }
-    for(int x=0;x<MAXIMUM_CUSTOMER;x++)
-        pthread_join(client[x],NULL);
-    printf("Maximum customers reached .....Shop Closes\n");
-    exit(EXIT_SUCCESS);
+    pthread_exit(NULL);
 }
 
-void thread_Client(void *ptr)
+void *agent(void *num)
 {
-    int seatToBeTaken, barb;   //modified
-    sem_wait(&mutex);
-    cnt++;
-    printf("Client-%d[Id:%d] enters the shop. ",cnt,pthread_self());
-    if(availableSeats > 0)
+    srand(time(NULL));
+    int *S_num = (int *) (num) ;
+    sem_wait(&Agready);
+
+    for (int i = 0; i < 63; i++)
     {
-        --availableSeats;
-        printf("Client-%d sits in waiting room.\n",cnt);
-        sitHereNext = (++sitHereNext) % MAXIMUM_CHAIRS;
-        seatToBeTaken = sitHereNext;
-        queChair[seatToBeTaken] = cnt;
-        sem_post(&mutex);
-        sem_post(&barbers);
-        sem_wait(&clients);
-        sem_wait(&mutex);
-        barb = queChair[seatToBeTaken];
-        availableSeats++;
-        sem_post(&mutex);
+        sem_wait(&Agent);
+
+        while(true)
+        {
+
+            int random_int = rand()%3 ;
+            usleep(rand()%4000);
+
+            if(wait_count[0]==0 && wait_count[1]==0 && wait_count[2]==0)
+            {
+                Done = true;
+                break;
+            }
+            else if(wait_count[random_int]!=0)
+            {
+                sleep(1);
+                cout<<" Take "<<Draw[random_int]<<endl;
+                G = random_int;
+                sem_post(&Smoker[random_int]);
+                break;
+            }
+        }
 
     }
-    else
-    {
-        sem_post(&mutex);
-        printf("Client-%d finds no seat and leaves.....\n",cnt);
-    }
-    pthread_exit(0);
+
 }
 
-void thread_Barber(void *ptr)
+void *do_some_work( void *num)
 {
-    int pos = *(int *)(ptr);      //modified
-    int customerToBeAddressed, cust;
-    printf("Barber-%d[Id:%d] wakes up and starts cutting. ",pos,pthread_self());
-    while(1)            //Infinite loop/
-    {
-        printf("Barber-%d is idle & Gone To Sleep.\n",pos);
-        sem_wait(&barbers);
-        sem_wait(&mutex);
-        nextClient = (++nextClient) % MAXIMUM_CHAIRS;
-        customerToBeAddressed = nextClient;
-        cust = queChair[customerToBeAddressed];
-        queChair[customerToBeAddressed] = pthread_self();
-        sem_post(&mutex);
-        sem_post(&clients);
-
-        printf("Barber-%d wakes up and is cutting hair of Client-%d.\n",pos,cust);
-        sleep(CUT_TIME);
-        printf("Barber-%d completes cutting. ",pos);
-    }
+    sem_wait(&Smready);
+    sem_post(&Agready);
 }
 
-void wait()     //Generates random number between 50000 to 250000/
+
+
+int main(void)
 {
-int xe = rand() % (250000 - 50000 + 1) + 50000;
-srand(time(NULL));
-usleep(xe);     //usleep halts execution in specified miliseconds
+    wait_count[0] = 21;
+    wait_count[1] = 21;
+    wait_count[2] = 21;
+
+    // 1 -> tobacco    2 -> matches    3 -> paper
+    sem_init(&Smoker[0],0,0);
+    sem_init(&Smoker[1],0,0);
+    sem_init(&Smoker[2],0,0);
+
+    sem_init(&Agent,0,1);
+
+    sem_init(&Agready,0,0);
+    sem_init(&Smready,0,0);
+
+    pthread_t smoker1, smoker2, smoker3, agent1, start;
+
+    int *f1 = new int[1];
+    f1[0] = 1;
+
+    int *f2 = new int[1];
+    f2[0] = 2;
+
+    int *f3 = new int[1];
+    f3[0] = 3;
+
+    pthread_create(&smoker1, NULL, smoker, f1);
+    pthread_create(&smoker2, NULL, smoker, f2);
+    pthread_create(&smoker3, NULL, smoker, f3);
+
+    pthread_create(&agent1, NULL, agent, f1);
+
+    pthread_create(&start, NULL, do_some_work, NULL);
+
+    pthread_join(smoker1, NULL);
+    pthread_join(smoker2, NULL);
+    pthread_join(smoker3, NULL);
+
+    return 0;
+
 }
